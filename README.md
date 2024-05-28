@@ -1,4 +1,4 @@
-# SCARAP paper
+# Pangenome toolkit
 
 This repository contains code to:
 
@@ -9,7 +9,7 @@ A manuscript describing these two analyses has been submitted to an open access 
 
 ## How to run 
 
-Step 1: clone the repository: 
+Step 1: clone this repository: 
 
     git clone https://github.com/SWittouck/pangenome-toolkit.git
 
