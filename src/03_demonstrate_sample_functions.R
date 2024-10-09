@@ -28,10 +28,65 @@ determine_novelties <- function(seeds, dists) {
   
 }
 
+# helper function for young_clades
+check_nodes <- function(
+  tree, distmat, threshold, node, to_collapse = integer()
+) {
+  children <- tree$edge[tree$edge[, 1] == node, 2]
+  if (length(children) == 0) return(to_collapse)
+  desc_left <- 
+    phytools::getDescendants(tree, children[1]) %>%
+    {tree$tip.label[.]} %>% 
+    discard(is.na)
+  desc_right <- 
+    phytools::getDescendants(tree, children[2]) %>%
+    {tree$tip.label[.]} %>% 
+    discard(is.na)
+  if (any(distmat[desc_left, desc_right] <= threshold)) {
+    to_collapse <- c(to_collapse, node)
+    return(to_collapse)
+  }
+  for (child in children) {
+    to_collapse <- check_nodes(tree, distmat, threshold, child, to_collapse)
+  }
+  to_collapse
+}
+
+#' Determine young clades
+#' 
+#' This function will determine all clades in a tree that are younger than a
+#' threshold value. A clade is younger than the threshold if any of the "left
+#' descendants" of its LCA are closer than the threshold to any of the "right
+#' descendants" of its LCA. Clades nested within young clades are not returned
+#' separately. 
+#' 
+#' @param tree A rooted tree of class phylo. 
+#' @param dists A threshold value (in terms of branch lengths). 
+#'   
+#' @return A vector with node names of LCAs of young clades
+young_clades <- function(tree, threshold) {
+
+  # calculate distance matrix between all tips
+  distmat <- ape::cophenetic.phylo(tree)
+  # assign rownames to distmat
+  rownames(distmat) <- colnames(distmat)
+  # determine root node 
+  root <- tree$edge[, 1][! tree$edge[, 1] %in% tree$edge[, 2]][1]
+  # check all nodes from root to tip
+  check_nodes(tree, distmat, 0.05, root) 
+
+}
+
 tibble2matrix <- function(t) {
   t %>%
     as.data.frame() %>%
     `rownames<-`(.$genome) %>%
     {.[, -1]} %>%
     as.matrix()
+}
+
+fig <- function(letter, plot) {
+  g <- ggplotGrob(plot + ggtitle(letter))
+  g$layout$l[g$layout$name == "title"] <- 1
+  g
 }

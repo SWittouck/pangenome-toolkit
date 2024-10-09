@@ -1,3 +1,5 @@
+#!/usr/bin/env Rscript
+
 # This script explores the full pangenome of a dereplicated set of > 6,000
 # genomes of Lactobacillales, computed by the LEGEN pipeline.
 
@@ -92,39 +94,39 @@ ggsave(
   height = 12
 )
 
-# visualize accessory status for orthogroups present in 10 or more species
+# visualize fixation frequency for orthogroups present in 10 or more species
 orthogroups_filtered <- 
   orthogroups %>%
   filter(n_species >= 10) %>%
-  mutate(p_species_accessory = n_species_accessory / n_species)
+  mutate(fixation_frequency = n_species_core / n_species)
 fig_acc_counts <- 
   orthogroups_filtered %>%
-  ggplot(aes(x = p_species_accessory, fill = cut_number(n_species, 5))) +
+  ggplot(aes(x = fixation_frequency, fill = cut_number(n_species, 5))) +
   geom_histogram() +
   theme_bw() +
-  xlab("species where accessory (%)") +
+  xlab("fixation frequency (%)") +
   ylab("number of orthogroups") +
   scale_fill_brewer(palette = "OrRd", name = "number of species")
 fig_acc_counts
 ggsave(
-  paste0(dout, "/accessory_counts_min10_species.png"), units = "cm", width = 16, 
+  paste0(dout, "/fixation_frequency_min10_species.png"), units = "cm", width = 16, 
   height = 12
 )
-saveRDS(fig_acc_counts, paste0(dout, "/accessory_counts_min10_species.rds"))
+saveRDS(fig_acc_counts, paste0(dout, "/fixation_frequency_min10_species.rds"))
 
 # inspect summary statistics of accessory status
 orthogroups_filtered %>%
   summarize(
     n_species_min10genomes = length(unique(orthogroup_occurrences$species)), 
     n_orthogroups_min10species = n(), 
-    p_orthogroups_min_95p_core = sum(p_species_accessory < 0.05) / n(), 
-    p_orthogroups_min_95p_accessory = sum(p_species_accessory >= 0.95) / n()
+    p_orthogroups_max_5p_ff = sum(fixation_frequency < 0.05) / n(), 
+    p_orthogroups_min_95p_ff = sum(fixation_frequency >= 0.95) / n()
   ) %>%
   write_csv(paste0(dout, "/accessory_analysis_statistics.csv"))
 
 # write table that identifies most accessory orthogroups
 orthogroups_filtered %>%
-  filter(p_species_accessory >= 0.95) %>%
+  filter(fixation_frequency < 0.05) %>%
   arrange(desc(n_species)) %>%
   select(orthogroup, n_species, n_species_accessory) %>%
   write_csv(paste0(dout, "/orthogroups_systematically_accessory.csv"))

@@ -1,12 +1,14 @@
+#!/usr/bin/env Rscript
+
 # This script demonstrates the SCARAP sample module using four test runs on a
-# dataset of L. plantarum genomes. Each run of the sample module produces a 
+# dataset of Lactiplantibacillus genomes. Each run of the sample module produces a 
 # genome sampling order and an ANI matrix. The four test runs use different ANI
 # variants: cANI/tcANI and full core genome vs 100 core genes. cANI is the 
 # normal core genome ANI, while tcANI is a trimmed version where 5% of the core
 # genes are removed on both sides of the per-gene ANI distribution before cANI
 # calculation. 
 
-# dependencies: R v4.2.3, tidyverse v1.3.1, ggtree v3.8.0
+# dependencies: R v4.2.3, tidyverse v1.3.1, ggtree v3.8.0, ape v5.8
 
 library(tidyverse)
 library(ggtree)
@@ -17,7 +19,7 @@ source("src/03_demonstrate_sample_functions.R")
 #########################################
 
 # specify paths 
-din <- "data/benchmark_scarap_v3/scarap_sample/lactiplantibacillus"
+din <- "data/benchmark_scarap_v4/scarap_sample/lactiplantibacillus"
 dout <- "results/sample_demonstration"
 
 # make output folder 
@@ -72,7 +74,7 @@ novcurves <-
 # Visualize novelty curves and ANI correlations #
 #################################################
 
-# explore the correlation between cANI from full core genome and subset
+# extract canis for independent contrasts
 contrasts_canis <- 
   novcurves %>%
   filter(dataset_sampling == "cani_full", dataset_dist == "cani_full") %>%
@@ -81,25 +83,8 @@ contrasts_canis <-
     dist_full = novelty,
     dist_sub = map2_dbl(seed, reference, ~ distmats$cani_sub[[.x, .y]])
   )
-contrasts_canis %>%
-  # filter(dist_full != 0, dist_sub != 0) %>%
-  mutate(across(c(dist_full, dist_sub), ~ {.[. == 0] <- 1e-6 ; .})) %>%
-  {cor.test(log10(.$dist_full), log10(.$dist_sub))}
-(
-  fig_corr_canis <-
-    contrasts_canis %>%
-    ggplot(aes(x = dist_full, y = dist_sub)) +
-    geom_abline(slope = 1, intercept = 0, lty = 2) +
-    geom_point(size = 1) + 
-    scale_x_log10() + scale_y_log10() + 
-    theme_bw() +
-    theme(plot.title = element_text(hjust = 0.5)) + 
-    xlab("novelty (all SCOs)") + 
-    ylab("novelty (100 SCOs)") +
-    geom_text("cANI-based novelty")
-)
 
-# explore the correlation between tcANI from full core genome and subset
+# extract tcanis for independent contrasts
 contrasts_tcanis <- 
   novcurves %>%
   filter(dataset_sampling == "tcani_full", dataset_dist == "tcani_full") %>%
@@ -108,91 +93,6 @@ contrasts_tcanis <-
     dist_full = novelty,
     dist_sub = map2_dbl(seed, reference, ~ distmats$tcani_sub[[.x, .y]])
   )
-contrasts_tcanis %>%
-  # filter(dist_full != 0, dist_sub != 0) %>%
-  mutate(across(c(dist_full, dist_sub), ~ {.[. == 0] <- 1e-6 ; .})) %>%
-  {cor.test(log10(.$dist_full), log10(.$dist_sub))}
-(
-  fig_corr_tcanis <- 
-    contrasts_tcanis %>%
-    ggplot(aes(x = dist_full, y = dist_sub)) +
-    geom_point(size = 1) +
-    geom_abline(slope = 1, intercept = 0, lty = 2) + 
-    scale_x_log10() + scale_y_log10() + 
-    theme_bw() +
-    xlab("1 - tcANI (full core genome)") + ylab("1 - tcANI (100 core genes)")
-)
-
-# visualize novelty curves (apart) 
-figs_novelties <- 
-  novcurves %>%
-  filter(dataset_sampling == dataset_dist) %>%
-  split(.$dataset_sampling) %>%
-  map(
-    ~ ggplot(., aes(x = step, y = novelty)) +
-      geom_point(size = 0.4) + 
-      scale_y_log10() +
-      theme_bw()
-  )
-
-# make figure panel with novelty curves and correlation scatterplots 
-fig <- function(letter, plot) {
-  g <- ggplotGrob(plot + ggtitle(letter))
-  g$layout$l[g$layout$name == "title"] <- 1
-  g
-}
-ggpubr::ggarrange(
-  fig("A", figs_novelties$cani_full), 
-  fig("B", figs_novelties$cani_sub),
-  fig("C", figs_novelties$tcani_full), 
-  fig("D", figs_novelties$tcani_sub),
-  fig("E", fig_corr_canis),
-  fig("F", fig_corr_tcanis),
-  ncol = 2, nrow = 3
-)
-ggsave(
-  paste0(dout, "/novelties_correlations_panel.png"), units = "cm", width = 16, 
-  height = 20
-)
-
-# make separate figures for cANI full and sub
-figs_novelties$cani_full
-ggsave(
-  paste0(dout, "/novelties_cani_full.png"), units = "cm", width = 10, 
-  height = 8
-)
-figs_novelties$cani_sub
-ggsave(
-  paste0(dout, "/novelties_cani_sub.png"), units = "cm", width = 10, 
-  height = 8
-)
-
-# visualize novelty curves in a facet grid
-corelabs <- c("full core genome", "100 core genes")
-novcurves %>%
-  separate(
-    dataset_sampling, into = c("ani_type", "core_genes"), sep = "_", remove = F
-  ) %>%
-  mutate(ani_type = factor(
-    ani_type, levels = c("cani", "tcani"), labels = c("cANI", "tcANI")
-  )) %>%
-  mutate(core_genes = factor(
-    core_genes, levels = c("full", "sub"), labels = corelabs
-  )) %>%
-  mutate(dist = str_extract(dataset_dist, "[^_]+$")) %>%
-  ggplot(aes(x = step, y = novelty, col = dist)) +
-  geom_point(size = 0.4) + 
-  facet_grid(rows = vars(ani_type), cols = vars(core_genes)) +
-  scale_y_log10() +
-  theme_bw() +
-  scale_color_brewer(palette = "Paired") 
-ggsave(
-  paste0(dout, "/novelties_grid.png"), units = "cm", width = 16, height = 16
-)
-
-##################################
-# Previous figures but as facets #
-##################################
 
 # visualize novelty curves (facet grid)
 (
@@ -236,7 +136,7 @@ ggpubr::ggarrange(
   ncol = 1, nrow = 2, heights = c(1, 0.7)
 )
 ggsave(
-  paste0(dout, "/novelties_correlations_panel2.png"), units = "cm", width = 16, 
+  paste0(dout, "/novelties_correlations.png"), units = "cm", width = 16, 
   height = 20
 )
 
@@ -261,11 +161,28 @@ tree %>%
 ggsave(paste0(dout, "/tree.png"), units = "cm", width = 12, height = 12)
 
 # visualize the tree (rectangular)
-tree %>%
-  tidygenomes::add_rootbranch() %>%
+tree2 <- tree %>% tidygenomes::add_rootbranch() 
+tree2 <- 
+  tree2 %>%
   ggtree::ggtree(layout = "rectangular") %<+%
   sampling +
   geom_tiplab2(aes(label = step), size = 1)
+for (clade in to_collapse) {
+  tree2 <- collapse(tree2, clade, "mixed")
+}
+tree2
 ggsave(
   paste0(dout, "/tree_rectangle.png"), units = "cm", width = 12, height = 50
+)
+
+# collapse clades within the species level
+to_collapse <- young_clades(tree, 0.05)
+# tree2 <- tree %>% tidygenomes::add_rootbranch() 
+treefig <- ggtree::ggtree(tree, layout = "rectangular")
+for (clade in to_collapse) {
+  treefig <- collapse(treefig, clade, "mixed")
+}
+treefig
+ggsave(
+  paste0(dout, "/tree_collapsed.png"), units = "cm", width = 12, height = 50
 )
